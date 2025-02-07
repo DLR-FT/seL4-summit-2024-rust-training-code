@@ -15,13 +15,13 @@
   };
 
   outputs =
-    {
-      self,
-      nixpkgs,
-      flake-utils,
-      fenix,
-      seL4-nix-utils,
-      rust-sel4,
+    { self
+    , nixpkgs
+    , flake-utils
+    , fenix
+    , seL4-nix-utils
+    , rust-sel4
+    ,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
@@ -30,11 +30,24 @@
           inherit system;
           overlays = [ fenix.overlays.default ];
         };
-        pkgsCross = import nixpkgs {
-          inherit system;
-          overlays = [ fenix.overlays.default ];
-          crossSystem.config = "aarch64-unknown-none-elf";
-        };
+        pkgsCross = import nixpkgs
+          {
+            inherit system;
+            overlays = [ fenix.overlays.default ];
+            crossSystem = {
+              config = "aarch64-unknown-none-elf";
+              rust.rustcTarget = "aarch64-unknown-none";
+            };
+          };
+        pkgsCrossSeL4 = import nixpkgs
+          {
+            inherit system;
+            overlays = [ fenix.overlays.default ];
+            crossSystem = {
+              config = "aarch64-unknown-none-elf";
+              rust.rustcTarget = "aarch64-sel4";
+            };
+          };
 
         rust-sel4 = import rust-sel4;
 
@@ -60,6 +73,7 @@
           ];
         });
       in
+      rec
       {
         packages.seL4-kernel-loader-add-payload =
           (pkgs.callPackage ./pkgs/seL4-kernel-loader.nix {
@@ -80,14 +94,40 @@
             };
           }).overrideAttrs
             (old: {
-              cargoBuildFlags = "--package=sel4-kernel-loader";
+              postPatch = ''
+                substituteInPlace crates/sel4-kernel-loader/build.rs --replace-fail "--image-base" "--Ttext"
+                substituteInPlace crates/sel4-kernel-loader/build.rs --replace-fail "println!(\"cargo:rustc-link-arg=--no-rosegment\");" ""
+              '';
+              cargoBuildFlags = [
+                "--package=sel4-kernel-loader"
+                "--config"
+                "target.${pkgsCross.stdenv.targetPlatform.rust.rustcTarget}.linker=\"${pkgsCross.stdenv.cc.targetPrefix}ld\""
+              ];
               env.SEL4_PREFIX = seL4-kernel;
             });
+        # TODO current this does not build:
+        # The reason is that we need the aarch64-sel4 target.
+        # For getting the "--target=aarch64-sel4" attached to the cargo build command,
+        #   we set the rustcTarget of pkgsCrossSeL4 to "aarch64-sel4".
+        # Now the build command uses the target json for aarch64-sel4, but instead of
+        #   CC_AARCH64_UNKNOWN_NONE for compiler and linker it sets CC_AARCH64_SEL4 which
+        #   results in missing compiler and linker during the build resulting in the error:
+        #   "no matching package named `compiler_builtins` found"
+        packages.hello-world =
+          (pkgsCross.callPackage ./pkgs/sel4-root-task.nix {
+            seL4-prefix = seL4-kernel;
+            rustPlatform = pkgsCrossSeL4.makeRustPlatform {
+              cargo = rust-toolchain;
+              rustc = rust-toolchain;
+            };
+          }).overrideAttrs (old: { });
 
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = [
             pkgs.rustPlatform.bindgenHook
             rust-toolchain
+            packages.seL4-kernel-loader-add-payload
+            packages.seL4-kernel-loader
           ] ++ seL4-nix-utils.devShells.${system}.default.nativeBuildInputs;
 
           env.SEL4_PREFIX = seL4-kernel;
