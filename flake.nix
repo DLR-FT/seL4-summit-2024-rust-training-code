@@ -15,13 +15,13 @@
   };
 
   outputs =
-    {
-      self,
-      nixpkgs,
-      flake-utils,
-      fenix,
-      seL4-nix-utils,
-      rust-sel4,
+    { self
+    , nixpkgs
+    , flake-utils
+    , fenix
+    , seL4-nix-utils
+    , rust-sel4
+    ,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
@@ -30,13 +30,15 @@
           inherit system;
           overlays = [ fenix.overlays.default ];
         };
-        pkgsCross = import nixpkgs {
-          inherit system;
-          overlays = [ fenix.overlays.default ];
-          crossSystem.config = "aarch64-unknown-none-elf";
-        };
-
-        rust-sel4 = import rust-sel4;
+        pkgsCross = import nixpkgs
+          {
+            inherit system;
+            overlays = [ fenix.overlays.default ];
+            crossSystem = {
+              config = "aarch64-unknown-none-elf";
+              rust.rustcTarget = "aarch64-unknown-none";
+            };
+          };
 
         rust-toolchain = pkgs.fenix.fromToolchainFile {
           file = ./rust-toolchain.toml;
@@ -60,7 +62,10 @@
           ];
         });
       in
+      rec
       {
+
+        inherit pkgsCross;
         packages.seL4-kernel-loader-add-payload =
           (pkgs.callPackage ./pkgs/seL4-kernel-loader.nix {
             rustPlatform = pkgs.makeRustPlatform {
@@ -74,20 +79,40 @@
 
         packages.seL4-kernel-loader =
           (pkgsCross.callPackage ./pkgs/seL4-kernel-loader.nix {
+            inherit rust-sel4;
             rustPlatform = pkgsCross.makeRustPlatform {
               cargo = rust-toolchain;
               rustc = rust-toolchain;
             };
           }).overrideAttrs
             (old: {
-              cargoBuildFlags = "--package=sel4-kernel-loader";
+              postPatch = ''
+                substituteInPlace crates/sel4-kernel-loader/build.rs --replace-fail "--image-base" "--Ttext"
+                substituteInPlace crates/sel4-kernel-loader/build.rs --replace-fail "println!(\"cargo:rustc-link-arg=--no-rosegment\");" ""
+              '';
+              cargoBuildFlags = [
+                "--package=sel4-kernel-loader"
+                "--config"
+                "target.${pkgsCross.stdenv.targetPlatform.rust.rustcTarget}.linker=\"${pkgsCross.stdenv.cc.targetPrefix}ld\""
+              ];
               env.SEL4_PREFIX = seL4-kernel;
             });
+        packages.hello-world =
+          (pkgsCross.callPackage ./pkgs/sel4-root-task.nix {
+            package = "hello";
+            seL4-prefix = seL4-kernel;
+            rustPlatform = pkgsCross.makeRustPlatform {
+              cargo = rust-toolchain;
+              rustc = rust-toolchain;
+            };
+          });
 
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = [
             pkgs.rustPlatform.bindgenHook
             rust-toolchain
+            packages.seL4-kernel-loader-add-payload
+            packages.seL4-kernel-loader
           ] ++ seL4-nix-utils.devShells.${system}.default.nativeBuildInputs;
 
           env.SEL4_PREFIX = seL4-kernel;
