@@ -1,17 +1,28 @@
-{ rustPlatform, fetchFromGitHub, rust-sel4 }:
+{ rustPlatform
+, stdenv
+, rust-sel4
+, seL4-prefix
+}:
 
 rustPlatform.buildRustPackage rec {
-  name = "seL4-kernel-loader";
-  version = "1.0.0";
+  name = "sel4-kernel-loader";
+  meta.mainProgram = name;
 
   src = rust-sel4;
 
-  doCheck = false;
-  # sourceRoot = "source/crates/sel4-kernel-loader";
+  cargoBuildFlags = [
+    "--package=sel4-kernel-loader"
+    "--config"
+    "target.${stdenv.targetPlatform.rust.rustcTarget}.linker=\"${stdenv.cc.targetPrefix}ld\""
+  ];
 
-  # prePatch = ''
-  #   postPatch = "cp ${./Cargo.lock} $sourceRoot/";
-  # '';
+  doCheck = false;
+
+  postPatch = ''
+    substituteInPlace crates/sel4-kernel-loader/build.rs --replace-fail "--image-base" "--Ttext"
+    substituteInPlace crates/sel4-kernel-loader/build.rs --replace-fail "println!(\"cargo:rustc-link-arg=--no-rosegment\");" ""
+  '';
+  env.SEL4_PREFIX = seL4-prefix;
 
   cargoLock = {
     lockFile = src + "/Cargo.lock";
