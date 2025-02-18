@@ -186,7 +186,7 @@ impl TlsReservation {
         let layout = tls_image.reservation_layout();
         let start = unsafe { ::alloc::alloc::alloc(layout.footprint()) };
         unsafe {
-            tls_image.initialize_tls_reservation(start);
+            tls_image.initialize_reservation(start);
         };
         Self { start, layout }
     }

@@ -33,7 +33,7 @@ sel4_panicking_env::register_debug_put_char!(sel4::debug_put_char);
 
 #[no_mangle]
 unsafe extern "C" fn sel4_runtime_rust_entry() -> ! {
-    unsafe extern "C" fn cont_fn(_cont_arg: *mut sel4_runtime_common::ContArg) -> ! {
+    fn cont_fn(_cont_arg: *mut sel4_runtime_common::ContArg) -> ! {
         inner_entry()
     }
 
@@ -48,7 +48,7 @@ fn inner_entry() -> ! {
 
     unsafe {
         sel4::set_ipc_buffer(get_ipc_buffer().as_mut().unwrap());
-        sel4_runtime_common::run_ctors();
+        sel4_ctors_dtors::run_ctors();
     }
 
     match catch_unwind(main) {

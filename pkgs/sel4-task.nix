@@ -13,15 +13,10 @@ let
   # to use build-std, we need all the dependencies for the rust compiler
   # this fetches all of these dependencies
   compilerDeps =
-    rustPlatform.buildRustPackage {
+    rustPlatform.fetchCargoVendor {
       src = "${rustPlatform.rust.rustc}/lib/rustlib/src/rust/library";
       name = "compiler-deps";
-      cargoHash = "sha256-iN5lfkvpkmFKefrSqmyjSdSgBbOaXdNZ8nfAdHt82Fw=";
-      dontBuild = true;
-      installPhase = ''
-        mkdir $out
-        mv /build/compiler-deps-vendor.tar.gz/* $out
-      '';
+      hash = "sha256-xD5HfPSZ29ECNi+26oThxvyLYIBBDe+VU+8RnCjbgtU=";
     };
   # we need to override the cargoBuildHook with the sel4 target
   cargoBuildHook = rustPlatform.cargoBuildHook.overrideAttrs (_: {
@@ -66,7 +61,7 @@ rustPlatform.buildRustPackage rec {
 
   doCheck = false;
   SEL4_PREFIX = seL4-prefix;
-  # CHILD_ELF = env;
+
   cargoLock = {
     lockFile = "${src}/${cargoRoot}/Cargo.lock";
     allowBuiltinFetchGit = true;

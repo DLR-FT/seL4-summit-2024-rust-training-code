@@ -40,10 +40,16 @@
             };
           };
 
-        rust-toolchain = pkgs.fenix.fromToolchainFile {
-          file = ./rust-toolchain.toml;
-          sha256 = "sha256-GJR7CjFPMh450uP/EUzXeng15vusV3ktq7Cioop945U=";
-        };
+        rust-toolchain = with pkgs.fenix;
+          combine [
+            latest.rustc
+            latest.rust-src
+            latest.cargo
+            latest.clippy
+            latest.rustfmt
+            latest.rust-analyzer
+            targets.aarch64-unknown-none.latest.rust-std
+          ];
 
         rust-sel4-toolchain = pkgs.fenix.fromToolchainFile {
           file = pkgs.concatText "rust-toolchain.tom" [
@@ -89,7 +95,7 @@
 
         tasks = [
           { name = "hello"; }
-          { name = "kernel-object"; }
+          { name = "kernel-objects"; }
           { name = "address-space"; }
           { name = "serial-device"; }
           { name = "spawn-thread"; }
@@ -127,13 +133,6 @@
               inherit rust-sel4;
               seL4-prefix = seL4-kernel;
               rustPlatform = seL4CrossRustPlatform;
-            });
-          foo =
-            (pkgsCross.callPackage ./pkgs/sel4-root-task.nix {
-              inherit (packages) seL4-kernel-loader-add-payload seL4-kernel-loader;
-              name = "foo";
-              seL4-prefix = seL4-kernel;
-              task = packages.tasks.hello;
             });
           tasks = (builtins.listToAttrs (builtins.map
             ({ name, env ? { }, ... }: {
@@ -180,8 +179,7 @@
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = [
             pkgs.rustPlatform.bindgenHook
-            # rust-toolchain
-            rust-sel4-toolchain
+            rust-toolchain
             packages.seL4-kernel-loader-add-payload
             packages.seL4-kernel-loader
           ] ++ seL4-nix-utils.devShells.${system}.default.nativeBuildInputs;
